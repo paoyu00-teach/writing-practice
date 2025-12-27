@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>學測國寫智能練筆室 (含範文功能)</title>
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif; margin: 0; padding: 0; background-color: #f9fafb; }
+        .font-serif { font-family: "Noto Serif TC", "Songti TC", serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        textarea { -webkit-appearance: none; border-radius: 0; }
+        
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #ffffff; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 9999;
+            color: #4b5563; text-align: center; padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3; border-top: 4px solid #3498db;
+            border-radius: 50%; width: 40px; height: 40px;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+
+    <!-- 引入 React 和 Tailwind -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" crossorigin></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    
+    <div id="root">
+        <div id="loading-screen">
+            <div class="spinner"></div>
+            <div>正在載入範文資料庫...</div>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- Icons ---
+        const Icon = ({ path, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            BookOpen: (props) => <Icon {...props} path={<><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>} />,
+            PenTool: (props) => <Icon {...props} path={<><path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></>} />,
+            Clock: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />,
+            CheckCircle2: (props) => <Icon {...props} path={<><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></>} />,
+            RotateCcw: (props) => <Icon {...props} path={<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"/><path d="M3 5v7h7"/></>} />,
+            Save: (props) => <Icon {...props} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />,
+            Lightbulb: (props) => <Icon {...props} path={<><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-1 1.5-2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></>} />,
+            AlertCircle: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>} />,
+            RefreshCw: (props) => <Icon {...props} path={<><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></>} />,
+            Eraser: (props) => <Icon {...props} path={<><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></>} />,
+            ChevronRight: (props) => <Icon {...props} path={<><polyline points="9 18 15 12 9 6"/></>} />,
+            Sparkles: (props) => <Icon {...props} path={<><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></>} />
+        };
+
+        // --- Main App Component ---
+        const GSATWritingCoach = () => {
+            const [currentView, setCurrentView] = useState('home'); 
+            const [mode, setMode] = useState(null); 
+            const [topic, setTopic] = useState(null);
+            const [questionContent, setQuestionContent] = useState('');
+            const [content, setContent] = useState('');
+            const [timeLeft, setTimeLeft] = useState(45 * 60);
+            const [isTimerRunning, setIsTimerRunning] = useState(false);
+            const [showMobileTips, setShowMobileTips] = useState(false);
+            const [showSample, setShowSample] = useState(false); // New State: Show sample essay
+
+            // 題庫資料 (含範文)
+            const topics = {
+                rational: [
+                {
+                    id: 'r1',
+                    title: '擬社會互動 (114學測)',
+                    description: '【閱讀引文】\n近年來社群媒體興起，產生了一種「擬社會互動」現象...（略）\n\n【寫作要求】\n請分項回答下列問題：\n第一題：請根據上文，說明「擬社會互動」的特徵。\n第二題：透過社群媒體各種樣態，闡述其正負面影響，並提出你的看法。',
+                    tips: ['第一段精準摘要定義', '正反面影響需舉具體例子', '結論需提出個人對於此現象的價值判斷'],
+                    sample: `(一)\n　　「擬社會互動」意指閱聽人透過大眾媒體，對媒體人物產生情感連結，進而建立起一種想像的人際關係。其特徵有三：首先，此互動多為「單向性」，閱聽人單方面接收訊息並產生情感，媒體人物往往不知情；其次，具備「情感投射」，閱聽人會將媒體人物視為朋友或導師，產生親切感與依賴；最後，此關係受「媒體中介」影響，互動建立在螢幕形象之上，而非真實生活接觸。\n\n(二)\n　　社群媒體的興盛，使擬社會互動更加頻繁且深入。這把雙面刃對現代人際關係產生了深遠影響。\n　　就正面而言，它提供了「情感補償」與「歸屬感」。例如獨居長者透過追蹤直播主，緩解了現實生活的孤獨；或是內向青少年在追星群體中找到共鳴，獲得心理支持。這種互動降低了社交門檻，成為現代人排解寂寞的避風港。\n　　然而，負面影響亦不容忽視。過度沉溺於擬社會互動，易導致「現實人際疏離」。當人們習慣於螢幕中完美的單向關係，可能對現實中充滿摩擦的真實互動感到不耐，甚至產生「社交退縮」。此外，媒體形象往往經過包裝，過度認同可能導致價值觀扭曲，甚至因偶像塌房而遭受巨大的心理創傷。\n　　我認為，擬社會互動是科技時代的必然產物，它如同一種「心理代糖」，能提供甜味，卻不能取代正餐。我們應將其視為生活的調劑，而非情感的全部寄託。唯有在虛擬與現實間保持清醒的界線，才能享受科技帶來的連結，而不致迷失於數據構築的幻象之中。`
+                },
+                {
+                    id: 'r2',
+                    title: '樂齡出遊 (111學測)',
+                    description: '【題目說明】\n如果要帶長者在台灣進行樂齡之旅，一定有許多待注意事項。\n\n【寫作要求】\n請以「樂齡出遊」為題，寫一篇短文，說明樂齡出遊的意義，並思考如何照顧到長者生理與情感上的需求。',
+                    tips: ['需兼顧「意義」與「具體方案」', '方案需具備可行性', '展現對長者心理的同理'],
+                    sample: `　　歲月如梭，染白了父母的雙鬢，也緩慢了他們的步伐。帶長者進行一趟「樂齡出遊」，不僅是身體的移動，更是心靈的撫慰。其意義在於「重拾活力」與「情感修復」。透過旅行，長者能跳脫日復一日的單調生活，接受新刺激，延緩老化；更重要的是，這是子女回饋親恩的具體實踐，在陪伴中修補因忙碌而疏離的親情連結。\n\n　　然而，樂齡旅遊絕非將年輕人的行程照搬。首重「生理需求」的體貼。行程規劃應採「減法美學」，一天不超過兩個景點，並落實「無障礙思維」。例如選擇平坦的步道取代登山階梯，確保每小時都有如廁與休息的節點。飲食上則需考量牙口與消化，選擇軟爛清淡的在地美食，並隨身攜帶常備藥品，讓長者在安全舒適的前提下探索世界。\n\n　　比起生理，更需細膩照料的是「情感需求」。許多長者怕給子女添麻煩，往往隱忍不適或假裝開心。因此，溝通必須「賦權」，在規劃階段就邀請長者參與討論，讓他們感到被重視而非被安排。旅途中，子女應放下手機，擔任專屬攝影師與聆聽者，引導長者分享過往回憶。當長者在旅途中露出久違的笑容，甚至興奮地像個孩子，那份自我價值的重塑，才是樂齡出遊最珍貴的風景。\n　　總結來說，樂齡出遊是一場以愛為名的慢活練習。當我們願意放慢腳步，配合長者的節奏，會發現，風景固然美麗，但與摯愛家人共度的時光，才是生命中最溫暖的歸途。`
+                },
+                {
+                    id: 'r3',
+                    title: '被遺忘權 vs 知的權利',
+                    description: '【議題背景】\n歐盟法院裁定民眾有權要求搜尋引擎移除過時或不相關的個人資訊連結（被遺忘權），但媒體與公眾則主張這可能侵害新聞自由與知的權利。\n\n【寫作要求】\n請分析數位時代「被遺忘權」與公眾「知的權利」之間的衝突，並提出你的看法。',
+                    tips: ['明確選定立場或提出折衷方案', '運用辯證思維', '分析利弊得失'],
+                    sample: `　　數位時代的烙印，往往比刻在石頭上更難抹滅。歐盟確立的「被遺忘權」，賦予個人刪除過時數位足跡的權利，這與傳統崇尚公開透明的公眾「知的權利」形成了尖銳的對立。這場衝突，本質上是「個人隱私重塑權」與「歷史真相完整性」的拔河。\n\n　　被遺忘權的支持者認為，人非聖賢，誰能無過？若一則十年前的輕微過失新聞，在搜尋引擎上永遠名列前茅，將使當事人如同背負著數位刺字，永無翻身之日，嚴重侵害其人格發展與更生機會。然而，反方則擔憂，若賦予個人過大的刪除權，恐遭有心人士濫用，政治人物或企業家可能藉此「洗白」過去的劣跡，導致歷史遭到片段式竄改，大眾將失去監督權勢者的重要資訊來源，新聞自由亦將名存實亡。\n\n　　對此，我認為應採「公共利益」作為兩者間的裁量基準。若資訊涉及公共事務、犯罪紀錄或歷史真相，則「知的權利」應優先，個人無權要求遺忘，以維護社會的警示與監督功能；反之，若資訊純屬個人私德、年代久遠且與公益無涉，則應尊重個人的「被遺忘權」，給予其重新開始的尊嚴。\n　　網路不該是無限期的數位刑場。在演算法主宰的年代，我們需要更細緻的法律框架，在透明與隱私之間劃出一道人性的界線。讓無關公益的陳年舊事隨風而逝，讓重要的歷史真相得以保存，這才是數位社會成熟的展現。`
+                }
+                ],
+                emotional: [
+                {
+                    id: 'e1',
+                    title: '關於52赫茲，我想說的是...',
+                    description: '【引文】\n科學家發現一隻發出52赫茲頻率的鯨魚，因為頻率獨特，其他鯨魚聽不見牠的歌聲，被稱為「世界上最孤獨的鯨魚」。\n\n【寫作要求】\n請以「關於52赫茲，我想說的是...」為題，書寫自己在群體中感到格格不入、孤獨，或尋求共鳴的經驗與體悟。',
+                    tips: ['運用「場景版」開頭帶入情境', '孤獨不一定是負面，可轉化為成長契機', '結尾需昇華主旨'],
+                    sample: `　　深邃的幽藍海域裡，陽光早已被層層海水濾盡，只剩下無邊的寂靜與寒冷。在那裡，有一隻鯨魚，正鼓動著巨大的肺葉，發出高達五十二赫茲的頻率。那是一首無人能懂的歌，在廣袤的海洋中迴盪，卻始終換不來一聲同類的應和。科學家說，牠是世界上最孤獨的鯨魚；但在我看來，牠卻是這片藍色荒漠中，最自由的歌者。\n\n　　我也曾是一隻泅泳於喧囂陸地上的五十二赫茲鯨魚。高二那年，當身旁的同學熱烈討論著韓團的最新單曲、週末的排隊美食時，我卻沉迷於古典文學的晦澀與老電影的黑白光影中。下課鐘響，教室裡的聲浪如潮水般湧來，將我包圍，卻無法滲透。我看著他們張合的嘴型，聽著那屬於集體的、歡愉的頻率，卻始終無法將自己的聲音調頻至與之共振的波段。我試著插話，試著假裝對那些話題感興趣，但每一次的嘗試，都像是一次無聲的溺水，換來的只是禮貌卻尷尬的微笑。那一刻，我覺得自己被世界遺棄了，孤獨感像深海的水壓，擠壓著我的耳膜，震耳欲聾。\n\n　　直到有一天，我獨自躲進圖書館的角落，翻開一本泛黃的散文集。書頁翻動的沙沙聲，竟與我內心的節奏意外地合拍。我才驚覺，或許我的頻率並非錯誤，只是尚未傳遞到對的地方。那隻五十二赫茲的鯨魚，牠之所以歌唱，或許並非只為了尋求回應，而是為了確認自己的存在。牠的歌聲雖然孤獨，卻穿越了半個地球；牠雖然獨行，卻擁有整片海洋的遼闊。我開始不再強求融入那些不屬於我的群體，而是轉向內心，在閱讀與寫作中，構築屬於自己的珊瑚礁。\n\n　　關於五十二赫茲，我想說的是：孤獨，並非一種被動的遺棄，而是一種主動的揀選。正因為頻率獨特，我們才得以過濾掉生命中那些嘈雜的雜訊，聽見靈魂深處最純粹的聲響。當我不再焦慮於尋求共鳴，我發現自己反而能更敏銳地感知世界的細微美好——那是窗外雨落的滴答聲，是風吹過樹梢的絮語，是文字在筆尖流淌的樂音。\n\n　　如今，我依然在這喧鬧的人海中獨行，偶爾仍會感到寂寞，但我已不再害怕。因為我知道，在那深邃的生命海洋裡，只要我持續發出屬於自己的聲音，哪怕頻率再高、再獨特，終有一天，這段聲波會遇見另一顆懂得聆聽的心。縱使終其一生無人應和，我也已在獨唱的過程中，游出了屬於自己的，最壯麗的航道。`
+                },
+                {
+                    id: 'e2',
+                    title: '縫隙的聯想 (113學測)',
+                    description: '【題目說明】\n森林的樹木間有縫隙，生活與生命中也有縫隙。\n\n【寫作要求】\n請結合生活經驗，以「縫隙的聯想」為題，書寫你對「縫隙」的感思。',
+                    tips: ['縫隙可以是具象空間，也可以是抽象的時間或心靈空間', '描寫發現縫隙當下的感受', '賦予縫隙獨特的意義'],
+                    sample: `　　兩座高聳的建築之間，往往夾著一線狹長的天空；那是城市水泥叢林中，唯一的呼吸孔道。我常駐足仰望，那道藍得耀眼的縫隙，不似曠野天空的遼闊，卻因被擠壓而顯得格外珍貴。我想，生命亦是如此，在密不透風的日常與責任之間，我們都需要那樣一道縫隙，讓光透進來。\n\n　　身為一名被考試進度追趕的高三生，我的生活像是一塊被填滿的磚牆，每一分每一秒都被試卷、模擬考與補習班無情地堆砌，嚴絲合縫，不留餘地。我曾以為，所謂的「充實」就是不留空白，直到那次模擬考失利，焦慮如藤蔓般爬滿心牆，讓我幾近窒息。那天傍晚，我逃離了充滿紅筆訂正痕跡的教室，漫無目的地走到了學校後山的圍牆邊。牆角有一處龜裂的縫隙，一株不知名的小草竟從那貧瘠、灰暗的裂口中探出頭來，迎著夕陽，開出了一朵倔強的小白花。\n\n　　那一刻，我震懾住了。那道裂痕，對牆而言是瑕疵，對種子而言卻是生機。如果沒有這道縫隙，種子將永遠被困在黑暗中；如果生命沒有缺口，陽光又該如何照亮靈魂？我開始反思，或許我不該害怕生活中的停頓與挫折。那次考試的失敗，不正是生命給予我的一道縫隙嗎？它強迫我停下盲目奔跑的腳步，給我空間去檢視自己的讀書方法，去調整失衡的心態。\n\n　　從那之後，我學會在日表中刻意留白。可能是通勤車上的十分鐘發呆，可能是睡前閱讀幾頁無關考試的小說。這些時間看似無用的「縫隙」，卻成為我安頓身心的祕密花園。在那些短暫的抽離中，我找回了對知識的好奇，找回了繼續堆砌磚牆的力氣。\n　　萬物皆有裂痕，那是光照進來的地方。如今，我不再追求完美無瑕的人生，反而珍惜每一個意外出現的縫隙。無論是時間的空白，還是遭遇的挫敗，它們都是生命溫柔的提醒，告訴我們：在緊繃與窒息之間，別忘了抬頭，看看那線蔚藍的天，深呼吸，然後再一次，優雅地生長。`
+                },
+                {
+                    id: 'e3',
+                    title: '如果我有一座新冰箱 (110學測)',
+                    description: '【題目說明】\n冰箱可以保存食物，甚至保存記憶與情感。\n\n【寫作要求】\n請以「如果我有一座新冰箱」為題，藉由冰箱的冷藏功能或象徵意義，抒發你對美好生活、情感保存的想像與期待。',
+                    tips: ['虛實整合：冰箱是實體，保存的情感是虛體', '多感官描寫：視覺、味覺、觸覺', '連結家庭記憶或個人情感'],
+                    sample: `　　家裡的老冰箱，壓縮機總是發出低沉的喘息，像一位操勞過度的老僕人。它的肚子裡塞滿了母親怕我們餓著的焦慮：過期的罐頭、沒吃完的剩菜、深處那包不知何年的冷凍水餃。打開門，一股混雜著五味雜陳的冷氣撲面而來，那是生活的氣味，也是負擔的味道。如果我有一座新冰箱，我希望它不再是用來堆積焦慮的倉庫，而是一座保存美好時光的博物館。\n\n　　這座新冰箱，外觀不需要太過科技感的銀灰，最好是溫潤的鵝黃色，像童年午後的陽光。它的上層冷凍庫，我要用來冰封那些「稍縱即逝的感動」。我要放入那年夏天海邊鹹鹹的海風，放入第一次領到獎狀時手心微微發熱的溫度，還有畢業典禮那天，與摯友相擁時眼淚的冰涼。當未來的日子感到疲憊或麻木時，我便能打開這扇門，取出一塊晶瑩剔透的回憶冰磚，讓它在心頭慢慢融化，重溫那份最初的悸動。\n\n　　下層的冷藏室，我不放剩菜，只放「新鮮的期待」。我要放滿各式各樣尚未嘗試的食材：翠綠的羅勒、豔紅的甜椒、來自異國的起司。這象徵著我對未來生活的想像——不因循苟且，不重覆昨日的剩餘，而是每天都願意為自己烹調出一份新鮮的體驗。我也會留一個專屬的隔層給家人，不再是塞滿食物強迫對方接受，而是冰鎮一壺清甜的檸檬水，或是一盤切好的當季水果。當父親下班、母親忙完家務，我們能圍坐在一起，分享這份簡單而純粹的清涼，讓冰箱成為情感交流的中繼站，而非壓力的儲存槽。\n\n　　如果我有一座新冰箱，它將具備一種特殊的保鮮科技，能過濾掉情緒中的爭執與不快，只鎖住愛與包容的鮮度。在這個快節奏、易腐敗的年代，我們太需要這樣一方淨土，低溫保存那些脆弱卻珍貴的人性光輝。\n　　當然，我知道這世上買不到這樣的冰箱。但或許，這座新冰箱早已在我的心中插電運轉。當我開始學會斷捨離，學會珍惜當下，學會用新鮮的眼光看待家人與生活，我的心，便是一座最頂級的新冰箱，永恆保鮮著生命中最美好的滋味。`
+                }
+                ]
+            };
+
+            // ... (Guides and Logic remain similar, updated handleFinish) ...
+
+            const guides = {
+                rational: {
+                structure: ['問題意識 (定義問題)', '分析視角 (多面向)', '論證過程 (邏輯嚴密)', '總結立場 (清晰有力)'],
+                checklist: ['是否精確解讀引文？', '論點是否明確？', '論據是否具體？', '是否提出駁論？', '層次是否分明？']
+                },
+                emotional: {
+                structure: ['破題 (場景/譬喻)', '敘事 (具體事件)', '轉折 (內心體悟)', '昇華 (生命哲理)'],
+                checklist: ['是否有感官摹寫？', '經驗是否具體？', '情感是否真摯？', '首尾是否呼應？', '是否有獨特體悟？']
+                }
+            };
+
+            useEffect(() => {
+                let interval = null;
+                if (isTimerRunning && timeLeft > 0) {
+                interval = setInterval(() => {
+                    setTimeLeft((prevTime) => prevTime - 1);
+                }, 1000);
+                } else if (timeLeft === 0) {
+                setIsTimerRunning(false);
+                alert('時間到！');
+                setCurrentView('review');
+                }
+                return () => clearInterval(interval);
+            }, [isTimerRunning, timeLeft]);
+
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const startPractice = (selectedMode, selectedTopic) => {
+                setMode(selectedMode);
+                if (!selectedTopic) {
+                    setTopic({ title: '自訂題目', tips: ['請自行設定練習重點'], sample: '自訂題目模式下，無法提供對應範文，建議參考其他題目的寫作架構。' });
+                    setQuestionContent('');
+                } else {
+                    setTopic(selectedTopic);
+                    setQuestionContent(selectedTopic.description);
+                }
+                setCurrentView('writing');
+                setTimeLeft(45 * 60);
+                setContent('');
+                setIsTimerRunning(false);
+                setShowSample(false);
+                setShowMobileTips(false);
+            };
+
+            const getRandomTopic = (selectedMode) => {
+                const list = topics[selectedMode];
+                return list[Math.floor(Math.random() * list.length)];
+            };
+
+            const handleRandomizeInView = () => {
+                if (confirm('確定要換一題嗎？這將會覆蓋目前的題目欄位。')) {
+                    const newTopic = getRandomTopic(mode);
+                    setTopic(newTopic);
+                    setQuestionContent(newTopic.description);
+                }
+            };
+
+            const handleFinish = () => {
+                setIsTimerRunning(false);
+                // 檢查是否為白卷 (例如少於10個字)
+                if (content.trim().length < 10) {
+                    if (topic.id) { // 確保不是自訂題目
+                        alert("偵測到您尚未作答或內容過少。系統將自動為您生成一篇【高分範文】供您學習觀摩！");
+                        setShowSample(true);
+                    } else {
+                        alert("提醒：內容過少。因目前為「自訂題目」，系統無法提供對應範文，請繼續加油！");
+                    }
+                } else {
+                    setShowSample(false);
+                }
+                setCurrentView('review');
+            };
+
+            const copyToClipboard = () => {
+                const textToCopy = `【題目】\n${questionContent}\n\n【${showSample ? '參考範文' : '我的作答'}】\n${showSample ? topic.sample : content}`;
+                
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(textToCopy).then(() => alert("內容已複製！")).catch(() => alert("複製失敗"));
+                } else {
+                    // Fallback
+                    const textarea = document.createElement("textarea");
+                    textarea.value = textToCopy;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    alert("內容已複製！");
+                }
+            };
+
+            // --- Views ---
+
+            const HomeView = () => (
+                <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6 md:space-y-8 animate-in fade-in duration-500">
+                    <div className="text-center space-y-3 mt-4 md:mt-8">
+                        <h1 className="text-3xl md:text-4xl font-bold text-gray-800 tracking-tight">學測國寫<br className="md:hidden"/>智能練筆室</h1>
+                        <p className="text-base md:text-xl text-gray-600">隨時隨地，手機也能練作文</p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4 md:gap-6 mt-8">
+                        <div onClick={() => startPractice('rational', getRandomTopic('rational'))}
+                             className="bg-white rounded-2xl shadow-lg active:scale-95 transition-all p-6 border border-blue-100 cursor-pointer hover:shadow-xl">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="p-3 bg-blue-100 rounded-lg">
+                                    <Icons.BookOpen className="w-6 h-6 md:w-8 md:h-8 text-blue-600" />
+                                </div>
+                                <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">知性題</span>
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">統整判斷能力</h2>
+                            <p className="text-sm text-gray-600 mb-4">議題分析、邏輯論證。內建 114學測擬社會互動 等高分範文。</p>
+                            <button className="w-full py-2 bg-blue-600 text-white rounded-lg font-semibold shadow-md">開始練習</button>
+                        </div>
+
+                        <div onClick={() => startPractice('emotional', getRandomTopic('emotional'))}
+                             className="bg-white rounded-2xl shadow-lg active:scale-95 transition-all p-6 border border-rose-100 cursor-pointer hover:shadow-xl">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="p-3 bg-rose-100 rounded-lg">
+                                    <Icons.PenTool className="w-6 h-6 md:w-8 md:h-8 text-rose-600" />
+                                </div>
+                                <span className="text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-1 rounded-full">情意題</span>
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">寫作表達能力</h2>
+                            <p className="text-sm text-gray-600 mb-4">情感抒發、經驗連結。內建 52赫茲、縫隙 等高分範文。</p>
+                            <button className="w-full py-2 bg-rose-600 text-white rounded-lg font-semibold shadow-md">開始練習</button>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const WritingView = () => (
+                <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
+                    {/* Header */}
+                    <header className="bg-white border-b px-4 py-3 flex items-center justify-between shadow-sm shrink-0 z-10">
+                        <button onClick={() => confirm('確定要離開嗎？') && setCurrentView('home')} className="text-gray-500 p-1">
+                            <Icons.RotateCcw className="w-5 h-5" />
+                        </button>
+                        
+                        <div className={`flex items-center font-mono text-lg font-bold ${isTimerRunning ? 'text-gray-700' : 'text-gray-400'}`}>
+                            <Icons.Clock className="w-4 h-4 mr-2" />
+                            {formatTime(timeLeft)}
+                        </div>
+
+                        <div className="flex space-x-2">
+                             {!isTimerRunning && timeLeft === 45*60 && (
+                                <button onClick={() => setIsTimerRunning(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm">
+                                    開始計時
+                                </button>
+                             )}
+                            <button onClick={handleFinish} 
+                                    className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center shadow-sm">
+                                <Icons.Save className="w-4 h-4 mr-1" />
+                                <span className="hidden md:inline">交卷</span>
+                                <span className="md:hidden">交卷</span>
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Mobile Tips Toggle */}
+                    <div className="md:hidden bg-yellow-50 px-4 py-2 flex justify-between items-center border-b border-yellow-100 shrink-0 cursor-pointer"
+                         onClick={() => setShowMobileTips(!showMobileTips)}>
+                        <div className="flex items-center text-xs font-bold text-yellow-700">
+                            <Icons.Lightbulb className="w-3 h-3 mr-1" /> 寫作提示與題目
+                        </div>
+                        <Icons.ChevronRight className={`w-4 h-4 text-yellow-600 transition-transform ${showMobileTips ? 'rotate-90' : ''}`} />
+                    </div>
+
+                    {/* Main Body */}
+                    <div className="flex-1 flex overflow-hidden relative">
+                        {/* Sidebar/Drawer */}
+                        <div className={`
+                            absolute md:static top-0 left-0 w-full md:w-1/3 bg-white h-full z-20 
+                            transform transition-transform duration-300 ease-in-out border-r
+                            ${showMobileTips ? 'translate-y-0' : '-translate-y-full md:translate-y-0'}
+                            md:translate-y-0 overflow-y-auto p-4 shadow-xl md:shadow-none
+                        `}>
+                             <div className="space-y-6 pb-20 md:pb-0">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-gray-700 flex items-center">
+                                        <span className={`w-2 h-2 rounded-full mr-2 ${mode === 'rational' ? 'bg-blue-500' : 'bg-rose-500'}`}></span>
+                                        題目
+                                    </h3>
+                                    <div className="flex space-x-2">
+                                        <button onClick={() => setQuestionContent('')} className="p-1 text-gray-400 hover:text-red-500"><Icons.Eraser className="w-4 h-4"/></button>
+                                        <button onClick={handleRandomizeInView} className="p-1 text-blue-500 hover:text-blue-700"><Icons.RefreshCw className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
+                                <textarea
+                                    value={questionContent}
+                                    onChange={(e) => setQuestionContent(e.target.value)}
+                                    className="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 text-sm leading-relaxed min-h-[120px]"
+                                    placeholder="題目內容..."
+                                />
+
+                                <div>
+                                    <h3 className="font-bold text-gray-700 mb-2 flex items-center text-sm">
+                                        <Icons.Lightbulb className="w-4 h-4 mr-2 text-yellow-500" />
+                                        寫作提示
+                                    </h3>
+                                    <ul className="space-y-2">
+                                        {topic.tips.map((tip, idx) => (
+                                            <li key={idx} className="flex items-start text-xs text-gray-600 bg-yellow-50 p-2 rounded border border-yellow-100">
+                                                <span className="font-bold mr-2 text-yellow-600">{idx+1}.</span>{tip}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <button onClick={() => setShowMobileTips(false)} className="md:hidden w-full py-3 bg-gray-100 text-gray-600 rounded-lg mt-4 font-bold">
+                                    回到作答區
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Editor */}
+                        <div className="flex-1 flex flex-col h-full bg-white md:bg-gray-50 p-0 md:p-6 w-full">
+                            <div className="flex-1 flex flex-col bg-white md:shadow-md md:rounded-xl md:border h-full">
+                                <div className="border-b px-4 py-2 bg-gray-50 flex justify-between items-center shrink-0">
+                                    <span className="text-xs font-bold text-gray-500 flex items-center">
+                                        <Icons.PenTool className="w-3 h-3 mr-1"/> 作答區
+                                    </span>
+                                    <span className="text-xs text-gray-400">字數: {content.length}</span>
+                                </div>
+                                <textarea
+                                    className="flex-1 p-4 md:p-8 text-base md:text-lg leading-loose resize-none focus:outline-none text-gray-800 font-serif w-full"
+                                    placeholder="請在此開始作答... (若完全沒有靈感，可直接按「交卷」觀看範文)"
+                                    value={content}
+                                    onChange={(e) => setContent(e.target.value)}
+                                    spellCheck="false"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const ReviewView = () => (
+                <div className="min-h-screen bg-gray-100 p-4 md:p-8 overflow-y-auto">
+                    <div className="max-w-3xl mx-auto space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center">
+                                <Icons.CheckCircle2 className="w-6 h-6 mr-2 text-green-600" /> 
+                                {showSample ? '學習模式：範文觀摩' : '寫作檢視'}
+                            </h2>
+                            <div className="flex gap-3">
+                                <button onClick={copyToClipboard} className="flex-1 md:flex-none text-sm px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg shadow-sm hover:bg-gray-50 font-medium">
+                                    複製內容
+                                </button>
+                                <button onClick={() => setCurrentView('home')} className="flex-1 md:flex-none text-sm px-4 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 font-medium">
+                                    回首頁
+                                </button>
+                            </div>
+                        </div>
+
+                         <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-l-4 border-l-gray-400">
+                            <h4 className="text-xs font-bold text-gray-400 mb-2 uppercase">題目</h4>
+                            <div className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed">
+                                {questionContent || "（未輸入題目）"}
+                            </div>
+                        </div>
+
+                        {/* Answer / Sample Display */}
+                        <div className={`p-4 md:p-8 rounded-xl shadow-sm border transition-all ${showSample ? 'bg-yellow-50 border-yellow-200' : 'bg-white'}`}>
+                             <div className="flex justify-between items-center border-b pb-2 mb-4">
+                                <h4 className={`text-xs font-bold uppercase ${showSample ? 'text-yellow-700' : 'text-gray-400'}`}>
+                                    {showSample ? '★ AI 推薦範文 (A+級分示範)' : '您的作答'}
+                                </h4>
+                                {showSample && <Icons.Sparkles className="w-4 h-4 text-yellow-600" />}
+                             </div>
+                            <div className="prose max-w-none font-serif leading-loose whitespace-pre-wrap text-gray-800 text-base md:text-lg">
+                                {showSample ? topic.sample : (content || <span className="text-gray-400 italic">沒有內容...</span>)}
+                            </div>
+                        </div>
+
+                        {/* Checklist */}
+                        <div className="bg-indigo-50 p-4 md:p-6 rounded-xl border border-indigo-100">
+                            <h3 className="font-bold text-base text-indigo-900 mb-4 flex items-center">
+                                <Icons.BookOpen className="w-5 h-5 mr-2" />
+                                評分規準檢核
+                            </h3>
+                            <p className="text-xs text-indigo-600 mb-3">請對照上方的文章，檢查是否符合以下高分要素：</p>
+                            <div className="space-y-3">
+                                {guides[mode].checklist.map((item, idx) => (
+                                    <label key={idx} className="flex items-start p-2 rounded hover:bg-white/50 cursor-pointer">
+                                        <input type="checkbox" className="mt-1 w-4 h-4 text-indigo-600 rounded border-gray-300" />
+                                        <span className="ml-3 text-sm text-indigo-800 leading-relaxed">{item}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen font-sans selection:bg-blue-100">
+                    {currentView === 'home' && <HomeView />}
+                    {currentView === 'writing' && <WritingView />}
+                    {currentView === 'review' && <ReviewView />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<GSATWritingCoach />);
+    </script>
+</body>
+</html>
